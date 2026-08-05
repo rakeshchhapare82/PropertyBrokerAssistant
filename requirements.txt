@@ -1,0 +1,12 @@
+streamlit
+numpy
+pandas
+
+# Database
+psycopg2-binary
+SQLAlchemy
+
+# Environment Variables
+python-dotenv
+
+
