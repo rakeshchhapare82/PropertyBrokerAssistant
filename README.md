@@ -1,6 +1,6 @@
 
  conda deactivate
- venv\Scripts\activate   
+ .venv\Scripts\activate   
  uv pip install -r .\requirements.txt
 
 
