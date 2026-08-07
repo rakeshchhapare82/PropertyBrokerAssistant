@@ -1,10 +1,16 @@
+import os
+from pathlib import Path
 import streamlit as st
 import requests
 import json
 import time
 import pandas as pd
+from dotenv import load_dotenv
 
 from services.client_service import ClientService
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
 
 # ==========================================================
 # PAGE CONFIG
@@ -24,20 +30,22 @@ st.caption("Broadcast WhatsApp template messages to selected clients.")
 # ==========================================================
 
 st.sidebar.header("Meta Credentials")
+st.sidebar.caption("Using values from .env or your manual entry.")
 
-DEFAULT_ACCESS_TOKEN = "EAAZAjHUZBkRygBSGZByYHGHqQmcWlZALRI4KqV6PLZCODqmvcQnh0GmcIgpbiZBUrHKXdv9C7eXPFN2HB6nwZAXZAqGiPsZCtKlsD3MtM9XyCCLOnbs42ZAPSpkI4v9WOOZAeDUqv1ZA5XOyR3GZB7fAuEESyw5TS0Cqlyf5H4i6xcFaMea6q2bsTmNDdS0KDcBvqwLSXfW6h0GtSpssrevrjcJNibl9Bu5ZA23yIEJHwkt6TZCCfEZBfWvU3DSBA7n1yZBifEODFJ4itRU3RwHhqthVGpAZDZD"
-DEFAULT_PHONE_NUMBER_ID = "1239100782623541"
+ACCESS_TOKEN = (
+    st.sidebar.text_input(
+        "Access Token",
+        value=os.getenv("WHATSAPP_ACCESS_TOKEN", "").strip(),
+        type="password",
+    ) or ""
+).strip()
 
-ACCESS_TOKEN = st.sidebar.text_input(
-    "Access Token",
-    value=DEFAULT_ACCESS_TOKEN,
-    type="password"
-)
-
-PHONE_NUMBER_ID = st.sidebar.text_input(
-    "Phone Number ID",
-    value=DEFAULT_PHONE_NUMBER_ID
-)
+PHONE_NUMBER_ID = (
+    st.sidebar.text_input(
+        "Phone Number ID",
+        value=os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip(),
+    ) or ""
+).strip()
 
 # ==========================================================
 # SESSION STATE
@@ -222,10 +230,29 @@ st.session_state.selected_clients = edited_df.loc[
 
 
 
-template_name = st.text_area(
+send_mode = st.radio(
+    "Send as",
+    ["Text Message", "Template Message"],
+    horizontal=True,
+    index=0,
+)
+
+message_text = st.text_area(
+    "Message Text",
+    value="Hi there! This is a test message from the Property Broker Assistant.",
+    height=120,
+    help="Use this for normal WhatsApp text messages. Any non-empty message works here."
+)
+
+if send_mode == "Text Message":
+    st.info(
+        "For normal text messages, WhatsApp usually requires the recipient to have messaged your business before or to be within the 24-hour customer service window. Otherwise, use a template message."
+    )
+
+template_name = st.text_input(
     "Template Name",
     value="hello_world",
-    height=120
+    help="Only needed when using a WhatsApp template message."
 )
 
 send_clicked = st.button(
@@ -245,12 +272,17 @@ if send_clicked:
 
     if not ACCESS_TOKEN:
 
-        st.error("Please enter Access Token.")
+        st.error("Please enter a valid Access Token from your WhatsApp Business account.")
         st.stop()
 
     if not PHONE_NUMBER_ID:
 
-        st.error("Please enter Phone Number ID.")
+        st.error("Please enter your WhatsApp Phone Number ID.")
+        st.stop()
+
+    if not PHONE_NUMBER_ID.isdigit():
+
+        st.error("Phone Number ID must contain only digits.")
         st.stop()
 
     if len(st.session_state.selected_clients) == 0:
@@ -258,10 +290,19 @@ if send_clicked:
         st.warning("Please select at least one client.")
         st.stop()
 
-    if not template_name.strip():
+    if send_mode == "Text Message":
 
-        st.warning("Please enter Template Name.")
-        st.stop()
+        if not message_text.strip():
+
+            st.warning("Please enter a message to send.")
+            st.stop()
+
+    else:
+
+        if not template_name.strip():
+
+            st.warning("Please enter Template Name.")
+            st.stop()
 
     # -----------------------------
     # Selected Clients
@@ -344,29 +385,51 @@ Sending {index} of {total_clients}
 
         )
 
-        payload = {
+        if send_mode == "Text Message":
 
-            "messaging_product": "whatsapp",
+            payload = {
 
-            "recipient_type": "individual",
+                "messaging_product": "whatsapp",
 
-            "to": phone,
+                "recipient_type": "individual",
 
-            "type": "template",
+                "to": phone,
 
-            "template": {
+                "type": "text",
 
-                "name": template_name,
+                "text": {
 
-                "language": {
-
-                    "code": "en_US"
+                    "body": message_text.strip()
 
                 }
 
             }
 
-        }
+        else:
+
+            payload = {
+
+                "messaging_product": "whatsapp",
+
+                "recipient_type": "individual",
+
+                "to": phone,
+
+                "type": "template",
+
+                "template": {
+
+                    "name": template_name.strip(),
+
+                    "language": {
+
+                        "code": "en_US"
+
+                    }
+
+                }
+
+            }
 
         try:
 
@@ -376,7 +439,9 @@ Sending {index} of {total_clients}
 
                 headers=headers,
 
-                data=json.dumps(payload)
+                json=payload,
+
+                timeout=30
 
             )
 
@@ -396,11 +461,11 @@ Sending {index} of {total_clients}
 
                         "Status":
 
-                            "✅ Sent",
+                            "✅ Accepted by Meta",
 
                         "Response":
 
-                            "Success"
+                            "The WhatsApp API accepted the message request. Delivery still depends on recipient opt-in and WhatsApp business rules."
 
                     }
 
@@ -412,12 +477,19 @@ Sending {index} of {total_clients}
 
                     error_message = response.json() \
                         .get("error", {}) \
-                        .get("message")
+                        .get("message", "")
 
                 except Exception:
 
-                    error_message = (
+                    error_message = response.text.strip() or (
                         f"Status {response.status_code}"
+                    )
+
+                if response.status_code in (401, 403):
+
+                    error_message = (
+                        f"{error_message} "
+                        "(Authentication failed. Check that the access token is valid and that the phone number ID belongs to the same WhatsApp Business account.)"
                     )
 
                 st.session_state.logs.append(
@@ -490,7 +562,7 @@ if not logs_df.empty:
 
     sent = len(
         logs_df[
-            logs_df["Status"] == "✅ Sent"
+            logs_df["Status"].isin(["✅ Sent", "✅ Accepted by Meta"])
         ]
     )
 
@@ -540,8 +612,7 @@ if not logs_df.empty:
 
         st.success(
             f"🎉 Broadcast completed successfully.\n\n"
-            f"All {sent} WhatsApp template messages "
-            f"were processed successfully."
+            f"All {sent} WhatsApp message requests were accepted by Meta."
         )
 
     elif sent == 0:
