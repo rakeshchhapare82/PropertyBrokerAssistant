@@ -55,9 +55,10 @@ def get_db():
 def execute_query(query: str, params: dict | None = None):
     """
     Execute INSERT/UPDATE/DELETE queries.
+    Returns the SQLAlchemy result for insert-id inspection.
     """
     with get_db() as db:
-        db.execute(text(query), params or {})
+        return db.execute(text(query), params or {})
 
 
 def fetch_one(query: str, params: dict | None = None):

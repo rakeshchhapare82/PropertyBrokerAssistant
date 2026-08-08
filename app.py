@@ -6,8 +6,8 @@ import json
 import time
 import pandas as pd
 from dotenv import load_dotenv
-
 from services.client_service import ClientService
+
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")

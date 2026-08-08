@@ -48,7 +48,7 @@ class ClientService:
             )
 
 
-        ClientRepository.insert(
+        return ClientRepository.insert(
             client
         )
 

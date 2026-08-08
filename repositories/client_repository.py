@@ -49,10 +49,56 @@ class ClientRepository:
         )
         """
 
-        execute_query(
+        result = execute_query(
             query,
             client.__dict__
         )
+
+        # -------------------------------------------------
+        # Get the newly created Client ID
+        # -------------------------------------------------
+        #
+        # Depending on the database/SQLAlchemy execution path,
+        # inserted_primary_key or lastrowid may not be available.
+        # Since mobile is validated as unique in ClientService,
+        # it is safe to retrieve the newly inserted client using
+        # the mobile number.
+        # -------------------------------------------------
+
+        try:
+            pk = result.inserted_primary_key
+
+            if pk and pk[0] is not None:
+                return pk[0]
+
+        except Exception:
+            pass
+
+        try:
+            lastrowid = result.lastrowid
+
+            if lastrowid is not None:
+                return lastrowid
+
+        except Exception:
+            pass
+
+        # Fallback: retrieve the client ID using the unique mobile
+        client = fetch_one(
+            """
+            SELECT client_id
+            FROM clients
+            WHERE mobile = :mobile
+            """,
+            {
+                "mobile": client.mobile
+            }
+        )
+
+        if client:
+            return client["client_id"]
+
+        return None
 
 
     # -------------------------------------------------
